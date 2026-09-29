@@ -1,4 +1,4 @@
-# Cyrillic Reader (https://tgm-hub.github.io/russian-pannels-learning)
+# Cyrillic Reader 🔗 [Open App](https://tgm-hub.github.io/russian-pannels-learning)
 
 Entraînement GeoGuessr : lire un panneau en cyrillique, l'écrire en latin, puis placer la ville sur la carte.
 
