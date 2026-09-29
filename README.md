@@ -1,4 +1,4 @@
-# Cyrillic Reader
+# Cyrillic Reader (https://tgm-hub.github.io/russian-pannels-learning)
 
 Entraînement GeoGuessr : lire un panneau en cyrillique, l'écrire en latin, puis placer la ville sur la carte.
 
@@ -6,5 +6,3 @@ Entraînement GeoGuessr : lire un panneau en cyrillique, l'écrire en latin, pui
 - Saisie tolérante (Kharkiv / Harkiv / Charkiw…), correction lettre par lettre
 - Audio : RHVoice (voix natives ukrainienne, kirghize, macédonienne ; russe sinon)
 - Carte : Natural Earth (régions administratives), Mercator, sans étiquettes
-
-Déploiement : pousser `index.html` + `audio/` à la racine du repo, activer GitHub Pages.
