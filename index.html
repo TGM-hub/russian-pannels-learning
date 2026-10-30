@@ -82,6 +82,16 @@ aside h3{font-size:13px;margin:16px 0 6px;color:var(--muted);text-transform:uppe
 .gl b{display:block;font-size:20px}
 .gl span{font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
 .gl.faux{border-color:var(--bad)}
+.gl{position:relative}
+.gl b i{font-style:normal;font-weight:500;margin-left:5px;color:var(--muted)}
+.gl em{display:block;font-style:normal;font-size:10px;color:var(--accent);letter-spacing:.03em;min-height:12px}
+.gl.insign{outline:2px solid var(--accent);outline-offset:-1px;background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.gl[data-err]::after{content:attr(data-err);position:absolute;top:1px;right:3px;font-size:9px;color:var(--bad);font-weight:600}
+.famdesc{font-size:12px;color:var(--muted);margin:-4px 0 6px}
+.weak{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.weak .w{border:1px solid var(--bad);background:var(--badbg);border-radius:6px;padding:2px 7px;font-size:13px}
+.weak .w b{font-size:17px;margin-right:4px}
+.cheatnote{font-size:12px;color:var(--muted);margin:4px 0 0}
 kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 .foot{font-size:12px;color:var(--muted);margin-top:14px}
 .sign-lesson{font-size:26px;letter-spacing:.02em;margin:6px 0 4px}
@@ -98,8 +108,12 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-
   <h1>Cyrillic Reader</h1>
   <div class="chips" id="opts">
     <button data-o="gg" title="Retire les pays sans couverture Street View officielle">Couverture GeoGuessr</button>
-    <button data-o="readonly" title="Valide la lecture et enchaîne sans l'étape carte">Lecture seule</button>
+    <button data-o="readonly" title="Pas de clic sur la carte : correction, audio et emplacement affichés, Entrée ou Espace pour suivant">Sans clic carte</button>
     <button data-o="marks" title="Villes repères sur la carte">Repères</button>
+  </div>
+  <div class="chips" id="mode">
+    <button data-m="city" class="on" title="Noms de villes">Villes</button>
+    <button data-m="reg" title="Les régions de Russie (oblasts, krais, républiques) : lire le nom puis cliquer la région">Régions RU</button>
   </div>
   <div class="chips" id="filter">
     <button data-f="RUS" class="on">Russie</button>
@@ -126,7 +140,7 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-
     <div class="verdict" id="verdict"></div>
     <div class="letters" id="letters"></div>
     <div class="result" id="result"></div>
-    <div class="foot"><kbd>Entrée</kbd> valider / manche suivante · <kbd>Ctrl</kbd>+<kbd>Espace</kbd> réécouter · molette ou boutons pour zoomer, glisser pour déplacer</div>
+    <div class="foot"><kbd>Entrée</kbd> valider / manche suivante (ou <kbd>Espace</kbd>) · <kbd>Ctrl</kbd>+<kbd>Espace</kbd> réécouter · molette ou boutons pour zoomer, glisser pour déplacer</div>
   </section>
 
   <section class="card mapwrap">
@@ -188,17 +202,20 @@ function align(cyr, input){
   const segs=[]; let j=m;
   for(let i=n;i>=1;i--){ const [k,o]=bk[i][j]; segs.unshift({ch:letters[i-1], typed:s.slice(k,j), ok:OPT[letters[i-1]].includes(s.slice(k,j))||(o===''&&s.slice(k,j)===''), exp:OPT[letters[i-1]][0]}); j=k; }
   if(j>0 && segs.length){ segs[0].typed=s.slice(0,j)+segs[0].typed; segs[0].ok=false; }
-  return {cost:best, segs, len:n};
+  return {cost:best, segs, len:n, src:cyr};
 }
 function judge(city, input){
   const s=norm(input); if(!s) return null;
-  const a=align(city.n, input);
+  let a=align(city.n, input);
+  /* Regions: typing "oblast" / "kray" / "respublika" is optional — the core
+     name alone is graded too and the better of the two is kept. */
+  if(city.core && city.core!==city.n){ const b=align(city.core, input); if(b.cost<a.cost) a=b; }
   const exact=city.alt.some(x=>norm(x)===s);
   if(exact) a.segs.forEach(g=>g.ok=true);
   const cost=exact?0:a.cost;
-  const tol=a.len>10?2:1;
+  const tol=city.kind==='reg' ? Math.max(1,Math.round(a.len/7)) : a.len>10?2:1;
   const level=cost===0?'ok':cost<=tol?'mid':'bad';
-  return {level, cost, segs:a.segs};
+  return {level, cost, segs:a.segs, src:a.src};
 }
 
 // ---------- Carte ----------
@@ -224,7 +241,7 @@ function fitBox(x0,y0,x1,y1,pad=0.06){
   if(w/h>ar) h=w/ar; else w=h*ar;
   setVB({x:cx-w/2,y:cy-h/2,w,h});
 }
-function fitFilter(){ const b=bboxOf(filter); fitBox(b.x0,b.y0,b.x1,b.y1); }
+function fitFilter(){ const b=bboxOf(mode==='reg'?'RUS':filter); fitBox(b.x0,b.y0,b.x1,b.y1); }
 function zoomAt(f,cx,cy){ if(cx===undefined){cx=vb.x+vb.w/2;cy=vb.y+vb.h/2;}
   const w=Math.min(Math.max(vb.w*f,150),12000), k=w/vb.w; setVB({x:cx-(cx-vb.x)*k,y:cy-(cy-vb.y)*k,w,h:vb.h*k}); }
 function toSvg(evt){ const pt=svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
@@ -269,21 +286,59 @@ const W = JSON.parse(localStorage.getItem('cyrW')||'{}');
 const saveW = () => { try{ localStorage.setItem('cyrW', JSON.stringify(W)); }catch(e){} };
 const wOf = c => W[c.n] ?? 1;
 
-let filter='RUS', city=null, phase='read', queue=[], readRes=null;
-const st={rounds:0,read:0,map:0,streak:0};
+let filter='RUS', mode='city', city=null, phase='read', queue=[], readRes=null;
+const st={rounds:0,read:0,map:0,mapN:0,streak:0};
+
+/* Per-letter error stats: which Cyrillic letters you actually misread,
+   across every round (cities and regions). Smoothed so that one miss on a
+   letter seen once does not top the list. */
+const LS = JSON.parse(localStorage.getItem('cyrL')||'{}');
+const saveLS = () => { try{ localStorage.setItem('cyrL', JSON.stringify(LS)); }catch(e){} };
+const lrate = k => { const v=LS[k]; return v ? (v[1]+0.3)/(v[0]+3) : 0.1; };
+function recordLetters(segs){ for(const g of segs){ const k=g.ch.toLowerCase(); const v=LS[k]||(LS[k]=[0,0]); v[0]++; if(!g.ok) v[1]++; } saveLS(); }
+function weakLetters(n=8){ return Object.keys(LS).filter(k=>LS[k][0]>=3 && LS[k][1]>0 && lrate(k)>0.15)
+  .sort((a,b)=>lrate(b)-lrate(a)).slice(0,n); }
+/* A name containing one of your weak letters comes up up to 3x more often. */
+function letterBoost(c){ let m=0; for(const ch of new Set(c.n.toLowerCase())) if(OPT[ch]) m=Math.max(m,lrate(ch));
+  return Math.min(3, 1+5*Math.max(0,m-0.12)); }
+
+/* Region mode — Russia only: the region names stored for the other countries
+   are Russian spellings (Черниговская for Чернігівська), exactly the wrong
+   orthography to drill. Moscow and St Petersburg are left out: as regions they
+   are a few pixels wide and they already come up as cities. */
+const GENERIC=/\s*(—\s*Югра|автономн(ый|ая) (округ|область)|область|край|Республика)\s*/g;
+const translit = s => s.split(/([\s-]+)/).map(w=>{ const t=[...w.toLowerCase()].map(ch=>OPT[ch]?OPT[ch][0]:ch).join('');
+  return t.charAt(0).toUpperCase()+t.slice(1); }).join('');
+let REGS=null;
+function regionItems(){
+  if(REGS) return REGS;
+  REGS = DATA.regions.filter(r=>r.c==='RUS' && !['Москва','Санкт-Петербург'].includes(r.ru)).map(r=>{
+    const b=regEls[r.id].getBBox(), x=b.x+b.width/2, y=b.y+b.height/2, [lat,lon]=unproj(x,y);
+    const core=r.ru.replace(GENERIC,' ').trim();
+    const main=DATA.cities.find(c=>c.r===r.id);
+    return {kind:'reg', n:r.ru, core, l:translit(r.ru)+' ('+r.en+')', alt:[r.en, r.en.replace(/ (Krai|Republic|Autonomous Okrug|Oblast)$|^Republic of /g,'')],
+      c:'RUS', r:r.id, x, y, lat, lon, a:null, main};
+  });
+  return REGS;
+}
+const pool = () => mode==='reg' ? regionItems() : DATA.cities.filter(c=>inFilter(c.c,filter));
 const inFilter=(c,f)=>(!OPTS.gg || !NOCOV[c]) && (f==='ALL'||(f==='RUS'?c==='RUS':c!=='RUS'));
 function nextCity(){
-  if(!queue.length) queue=DATA.cities.filter(c=>inFilter(c.c,filter));
+  if(!queue.length) queue=pool();
   if(!queue.length) queue=DATA.cities.slice();
-  { const tot=queue.reduce((s,c)=>s+wOf(c),0); let r=Math.random()*tot, k=queue.length-1;
-    for(let i=0;i<queue.length;i++){ r-=wOf(queue[i]); if(r<=0){ k=i; break; } }
+  { const wt=c=>wOf(c)*letterBoost(c);
+    const tot=queue.reduce((s,c)=>s+wt(c),0); let r=Math.random()*tot, k=queue.length-1;
+    for(let i=0;i<queue.length;i++){ r-=wt(queue[i]); if(r<=0){ k=i; break; } }
     city=queue.splice(k,1)[0]; } phase='read'; readRes=null;
   sign.textContent=city.n; guess.value=''; guess.disabled=false; submit.disabled=false; submit.textContent='Valider';
   verdict.className='verdict'; verdict.innerHTML=''; letters.innerHTML=''; result.className='result'; result.innerHTML='';
   locked.style.display='flex'; svg.classList.remove('active'); clearMarks(); fitFilter(); drawAnchors(); guess.focus();
+  mapStep.textContent = OPTS.readonly ? '2 · Où c\'est' : mode==='reg' ? '2 · Place la région (clique dessus)' : '2 · Place la ville (clique sur la région)';
+  guess.placeholder = mode==='reg' ? 'Écris le nom en latin (« oblast », « kray »… facultatifs)' : 'Écris le nom en latin…';
+  markSign();
 }
 let audio=null;
-function play(){ if(!city) return; audio&&audio.pause(); audio=new Audio('audio/'+city.a); audio.play().catch(()=>{}); }
+function play(){ if(!city||!city.a) return; audio&&audio.pause(); audio=new Audio('audio/'+city.a); audio.play().catch(()=>{}); }
 /* Which letters actually pin a country down, computed over the cities in play
    rather than from the alphabet: ј љ њ џ are Serbian AND Macedonian AND
    Bosnian, ө ү are Kyrgyz AND Mongolian, і is Ukrainian AND Belarusian AND
@@ -320,19 +375,21 @@ function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 function doRead(){
   const r=judge(city,guess.value); if(!r){guess.focus();return;}
   readRes=r; phase='map'; guess.disabled=true; submit.disabled=true;
-  if(OPTS.readonly){ scoreRead(r); return; }
+  recordLetters(r.segs);
   const msg={ok:'✓ Parfait',mid:'≈ Presque',bad:'✗ Pas tout à fait'}[r.level];
   verdict.className='verdict '+r.level;
-  verdict.innerHTML=`${msg} <button class="btn audio" onclick="play()" title="Réécouter">🔊</button><div class="lat">${esc(city.l)}</div>`;
+  verdict.innerHTML=`${msg} ${city.a?'<button class="btn audio" onclick="play()" title="Réécouter">🔊</button>':''}<div class="lat">${esc(city.l)}</div>`;
   // lettre par lettre
   const segs=[...r.segs]; let html='';
-  for(const ch of city.n){ const low=ch.toLowerCase();
+  for(const ch of r.src){ const low=ch.toLowerCase();
     if(!OPT[low]){ html+='<div class="lt gap"></div>'; continue; }
     const s=segs.shift(); if(!s) continue;
     const t=s.ok?esc(s.typed||'·'):`${s.typed?'<s>'+esc(s.typed)+'</s> ':''}<i>${esc(s.exp||'∅')}</i>`;
     html+=`<div class="lt ${s.ok?'ok':'bad'}" title="${esc(OPT[low].filter(Boolean).join(' / ')||'muet')}"><div class="c">${esc(ch)}</div><div class="t">${t}</div></div>`; }
   letters.innerHTML=html;
-  play(); locked.style.display='none'; svg.classList.add('active');
+  play();
+  if(OPTS.readonly){ scoreRead(r); return; }
+  locked.style.display='none'; svg.classList.add('active');
   if(window.innerWidth<=860) document.querySelector('.mapwrap').scrollIntoView({behavior:'smooth',block:'start'});
 }
 /* Reading-only round: score the reading, show the letter lesson, move on. */
@@ -343,30 +400,37 @@ function scoreRead(r){
   svg.classList.remove('active');
   locked.style.display='none';          // the map is the answer now, not a locked panel
   if(regEls[city.r]) regEls[city.r].classList.add('hit');
-  const mk=el('circle',{cx:city.x,cy:city.y,fill:'#c0392b',stroke:'#fff'},gMark);
-  markers.push({e:mk,type:'dot',px:6});
-  const pad=420;
-  fitBox(city.x-pad, city.y-pad, city.x+pad, city.y+pad);
+  if(city.kind==='reg'){ const b=regEls[city.r].getBBox(), m=Math.max(b.width,b.height)*0.6+150;
+    fitBox(b.x+b.width/2-m, b.y+b.height/2-m, b.x+b.width/2+m, b.y+b.height/2+m); }
+  else { const mk=el('circle',{cx:city.x,cy:city.y,fill:'#c0392b',stroke:'#fff'},gMark);
+    markers.push({e:mk,type:'dot',px:6});
+    const pad=900; fitBox(city.x-pad, city.y-pad, city.x+pad, city.y+pad); }
   updateMarkers();
   const rs={ok:100,mid:60,bad:0}[r.level];
-  st.rounds++; st.read+=rs; st.map+=rs;
+  st.rounds++; st.read+=rs;
   st.streak = r.level!=='bad' ? st.streak+1 : 0;
   sRounds.textContent=st.rounds; sRead.textContent=Math.round(st.read/st.rounds)+'%';
-  sMap.textContent='–'; sStreak.textContent=st.streak;
+  sMap.textContent=st.mapN?Math.round(st.map/st.mapN)+'%':'–'; sStreak.textContent=st.streak;
   W[city.n] = Math.min(8, Math.max(0.25, wOf(city) * (r.level==='ok'?0.82:1.7))); saveW();
   result.className='result on';
   const RR = regById[city.r];
   result.innerHTML = `<div class="big">${{ok:'✓ Lecture juste',mid:'≈ Presque',bad:'✗ Raté'}[r.level]} · ${rs} pts</div>
-    <div>${esc(DATA.countries[city.c])} — <b>${esc(RR?RR.ru:'?')}</b> <span class="hint">(${esc(RR?RR.en:'')})</span></div>
+    ${placeInfo(RR)}
     ${letterLesson()}
-    <div style="margin-top:10px"><button class="btn primary" id="nextBtn">Suivant →</button></div>`;
+    <div style="margin-top:10px"><button class="btn primary" id="nextBtn">Suivant →</button> <span class="hint"><kbd>Entrée</kbd> / <kbd>Espace</kbd></span></div>`;
   nextBtn.onclick=()=>{nextCity(); window.scrollTo({top:0,behavior:'smooth'});};
   nextBtn.focus({preventScroll:true});
 }
 
 /* The lesson is shown once the country is settled, never before — the decisive
    letters are exactly the answer to the map step. */
+function placeInfo(R){
+  if(city.kind==='reg') return `<div>Russie — <b>${esc(city.n)}</b></div>`
+    + (city.main?`<div class="hint">Ville principale : <b>${esc(city.main.n)}</b> (${esc(city.main.l)})</div>`:'');
+  return `<div>${esc(DATA.countries[city.c])} — <b>${esc(R?R.ru:'?')}</b> <span class="hint">(${esc(R?R.en:'')})</span></div>`;
+}
 function letterLesson(){
+  if(city.kind==='reg') return '';
   const dec=[...new Set([...city.n].filter(ch=>decisiveFor(ch,city.c)))];
   const nar=[...new Set([...city.n].filter(ch=>narrowsFor(ch,city.c)))];
   let s=`<div class="sign-lesson">${markedSign(city.n, city.c)}</div>`;
@@ -388,7 +452,7 @@ const ANCHOR_N = {RUS:4, UKR:2, KAZ:2};
 function anchorSet(){
   const seen={}, out=[];
   for(const c of DATA.cities){
-    if(!inFilter(c.c, filter)) continue;
+    if(!inFilter(c.c, mode==='reg'?'RUS':filter)) continue;
     seen[c.c] = (seen[c.c]||0) + 1;
     if(seen[c.c] <= (ANCHOR_N[c.c]||1)) out.push(c);
   }
@@ -410,26 +474,25 @@ function drawAnchors(){
 
 function doMap(evt, regId){
   phase='done'; svg.classList.remove('active');
-  const p=toSvg(evt), d=hav(unproj(p.x,p.y),[city.lat,city.lon]), good=regId===city.r||d<30;
+  const p=toSvg(evt), d=hav(unproj(p.x,p.y),[city.lat,city.lon]), good=regId===city.r||(city.kind!=='reg'&&d<30);
   const score=good?100:Math.round(80*Math.exp(-d/450));
   regEls[city.r].classList.add('hit'); if(!good && regId!=null && regEls[regId]) regEls[regId].classList.add('miss');
-  const line=el('line',{x1:p.x,y1:p.y,x2:city.x,y2:city.y,stroke:'#c0392b','stroke-dasharray':'6 4'},gMark); markers.push({e:line,type:'line',px:2});
+  if(city.kind!=='reg'){ const line=el('line',{x1:p.x,y1:p.y,x2:city.x,y2:city.y,stroke:'#c0392b','stroke-dasharray':'6 4'},gMark); markers.push({e:line,type:'line',px:2}); }
   const g=el('circle',{cx:p.x,cy:p.y,fill:'#555',stroke:'#fff'},gMark); markers.push({e:g,type:'dot',px:5});
-  const c=el('circle',{cx:city.x,cy:city.y,fill:'#c0392b',stroke:'#fff'},gMark); markers.push({e:c,type:'dot',px:7});
+  if(city.kind!=='reg'){ const c=el('circle',{cx:city.x,cy:city.y,fill:'#c0392b',stroke:'#fff'},gMark); markers.push({e:c,type:'dot',px:7}); }
   const x0=Math.min(p.x,city.x),x1=Math.max(p.x,city.x),y0=Math.min(p.y,city.y),y1=Math.max(p.y,city.y), m=Math.max(300-(x1-x0)/2,300-(y1-y0)/2,80);
   fitBox(x0-m,y0-m,x1+m,y1+m,0.05);
   const R=regById[city.r], C=regById[regId];
   // stats
   const rs={ok:100,mid:60,bad:0}[readRes.level];
-  st.rounds++; st.read+=rs; st.map+=score; st.streak=(readRes.level!=='bad'&&good)?st.streak+1:0;
-  sRounds.textContent=st.rounds; sRead.textContent=Math.round(st.read/st.rounds)+'%'; sMap.textContent=Math.round(st.map/st.rounds)+'%'; sStreak.textContent=st.streak;
-  const hint=city.c!=='RUS'?`<div class="hint">🔎 ${esc(DATA.hints[city.c])}</div>`:'';
+  st.rounds++; st.mapN++; st.read+=rs; st.map+=score; st.streak=(readRes.level!=='bad'&&good)?st.streak+1:0;
+  sRounds.textContent=st.rounds; sRead.textContent=Math.round(st.read/st.rounds)+'%'; sMap.textContent=Math.round(st.map/st.mapN)+'%'; sStreak.textContent=st.streak;
   W[city.n] = Math.min(8, Math.max(0.25, wOf(city) * (good && readRes.level==='ok' ? 0.82 : 1.7))); saveW();
   result.className='result on';
-  result.innerHTML=`<div class="big">${good?'✓ Bonne région':'✗ '+Math.round(d)+' km'} · ${score} pts</div>
-    <div>${esc(DATA.countries[city.c])} — <b>${esc(R.ru)}</b> <span class="hint">(${esc(R.en)})</span></div>
+  result.innerHTML=`<div class="big">${good?'✓ Bonne région':'✗ '+(city.kind==='reg'?'≈ ':'')+Math.round(d)+' km'} · ${score} pts</div>
+    ${placeInfo(R)}
     ${!good?`<div class="hint">Tu as cliqué : ${C?esc(C.ru)+' ('+esc(DATA.countries[C.c])+')':'hors des pays cyrilliques'}</div>`:''}${letterLesson()}
-    <div style="margin-top:10px"><button class="btn primary" id="nextBtn">Suivant →</button></div>`;
+    <div style="margin-top:10px"><button class="btn primary" id="nextBtn">Suivant →</button> <span class="hint"><kbd>Entrée</kbd> / <kbd>Espace</kbd></span></div>`;
   nextBtn.onclick=()=>{nextCity(); window.scrollTo({top:0,behavior:'smooth'});}; nextBtn.focus({preventScroll:true});
 }
 svg.addEventListener('click',e=>{ if(phase!=='map'||moved) return;
@@ -441,31 +504,64 @@ document.getElementById('opts').querySelectorAll('button').forEach(b=>{
   sync();
   b.onclick=()=>{ OPTS[k]=!OPTS[k]; saveOpts(); sync();
     if(k==='gg'){ OWN=letterOwners(); queue=[]; nextCity(); }
-    else if(k==='marks'){ clearMarks(); if(phase==='read') drawAnchors(); } };
+    else if(k==='marks'){ clearMarks(); if(phase==='read') drawAnchors(); }
+    if(phase==='read') guess.focus(); };
 });
 submit.onclick=doRead;
 document.addEventListener('keydown',e=>{
-  if(e.key==='Enter'){ if(phase==='read'&&document.activeElement===guess) doRead(); else if(phase==='done') { e.preventDefault(); nextCity(); } }
+  if(e.key==='Enter'){ if(phase==='read'&&document.activeElement===guess){ e.preventDefault(); doRead(); } else if(phase==='done') { e.preventDefault(); nextCity(); } }
+  if(e.code==='Space'&&!e.ctrlKey&&phase==='done'){ e.preventDefault(); nextCity(); return; }
   if(e.code==='Space'&&e.ctrlKey){ e.preventDefault(); play(); }
   if(e.key==='Escape') cheat.classList.remove('on');
 });
 const filterEl=document.getElementById('filter');
 filterEl.onclick=e=>{ const f=e.target.dataset.f; if(!f) return; filter=f; queue=[]; OWN=letterOwners();
   filterEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.f===f)); nextCity(); };
+const modeEl=document.getElementById('mode');
+modeEl.onclick=e=>{ const m=e.target.dataset.m; if(!m||m===mode) return; mode=m; queue=[];
+  modeEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  filterEl.style.display = m==='reg' ? 'none' : ''; nextCity(); };
 
 // ---------- Antisèche ----------
-const RU=[['А','a'],['Б','b'],['В','v',1],['Г','g'],['Д','d'],['Е','ye/e'],['Ё','yo'],['Ж','zh'],['З','z'],['И','i'],['Й','y'],['К','k'],['Л','l'],['М','m'],['Н','n',1],['О','o'],['П','p'],['Р','r',1],['С','s',1],['Т','t'],['У','u',1],['Ф','f'],['Х','kh',1],['Ц','ts'],['Ч','ch'],['Ш','sh'],['Щ','shch'],['Ъ','(dur)'],['Ы','y'],['Ь','(mou)'],['Э','e'],['Ю','yu'],['Я','ya']];
-const EXTRA=[['Ukraine',[['І','i'],['Ї','yi'],['Є','ye'],['Ґ','g'],['И','y'],['Г','h']]],
- ['Biélorussie',[['Ў','w/u'],['І','i'],['Г','h']]],
- ['Bulgarie',[['Ъ','ă (eu)'],['Щ','sht']]],
- ['Serbie · Monténégro · Bosnie',[['Ђ','đ'],['Ћ','ć'],['Џ','dž'],['Ј','j'],['Љ','lj'],['Њ','nj']]],
- ['Macédoine du Nord',[['Ѓ','gj'],['Ќ','kj'],['Ѕ','dz'],['Ј','j'],['Љ','lj'],['Њ','nj'],['Џ','dž']]],
- ['Kazakhstan',[['Ә','ä'],['Ғ','gh'],['Қ','q'],['Ң','ng'],['Ө','ö'],['Ұ','u'],['Ү','ü'],['Һ','h'],['І','i']]],
- ['Kirghizistan · Mongolie',[['Ң','ng'],['Ө','ö'],['Ү','ü']]]];
-const cell=([c,l,f])=>`<div class="gl${f?' faux':''}"><b>${c}</b><span>${l}</span></div>`;
-cheatBody.innerHTML=`<h3>Russe <span style="text-transform:none;letter-spacing:0">(bord rouge = faux ami)</span></h3><div class="grid">${RU.map(cell).join('')}</div>`
- + EXTRA.map(([t,ls])=>`<h3>${t}</h3><div class="grid">${ls.map(cell).join('')}</div>`).join('');
-cheatBtn.onclick=()=>cheat.classList.toggle('on'); cheatClose.onclick=()=>cheat.classList.remove('on');
+/* Grouped by what the letter LOOKS like, since on a sign you search by shape,
+   not by alphabet order. Each row: capital, small, reading, countries (blank =
+   Russian), faux-ami flag. Small letters matter: the signs are in mixed case
+   (Москва), and б д т л look nothing like their capitals. */
+const FAM=[
+ ['Comme en latin','même forme, même son',
+  [['А','а','a'],['Е','е','e / ye'],['К','к','k'],['М','м','m'],['О','о','o'],['Т','т','t'],['Ј','ј','j','SR MK'],['І','і','i','UA BY KZ'],['Һ','һ','h','KZ']]],
+ ['Faux amis','ressemblent au latin, se lisent autrement',
+  [['В','в','v','',1],['Н','н','n','',1],['Р','р','r','',1],['С','с','s','',1],['У','у','u','',1],['Х','х','kh','',1],['Ѕ','ѕ','dz','MK',1],['Ү','ү','ü','KZ KG MN',1]]],
+ ['Grecques','Γ Δ Λ Π Φ',
+  [['Г','г','g','h : UA BY'],['Д','д','d'],['Л','л','l'],['П','п','p'],['Ф','ф','f']]],
+ ['À l\'envers et chiffres','И = N miroir, Я = R miroir, З ≈ 3, Ч ≈ 4',
+  [['И','и','i','y : UA'],['Я','я','ya'],['Э','э','e'],['Є','є','ye','UA'],['Ә','ә','ä','KZ'],['З','з','z'],['Ч','ч','ch']]],
+ ['Avec une panse (b)','б ≈ 6 en minuscule',
+  [['Б','б','b'],['Ь','ь','(mou)'],['Ъ','ъ','(dur)','ă : BG'],['Ы','ы','y'],['Љ','љ','lj','SR MK'],['Њ','њ','nj','SR MK'],['Ђ','ђ','đ','SR'],['Ћ','ћ','ć','SR']]],
+ ['Peignes, pattes et queues','',
+  [['Ж','ж','zh'],['Ш','ш','sh'],['Щ','щ','shch','sht : BG'],['Ц','ц','ts'],['Џ','џ','dž','SR MK'],['Ю','ю','yu']]],
+ ['Crochets et barres','',
+  [['Қ','қ','q','KZ'],['Ң','ң','ng','KZ KG MN'],['Ғ','ғ','gh','KZ'],['Ұ','ұ','u','KZ'],['Ө','ө','ö','KZ KG MN'],['Ґ','ґ','g','UA']]],
+ ['Accents et points','',
+  [['Й','й','y'],['Ё','ё','yo'],['Ї','ї','yi','UA'],['Ў','ў','w / u','BY'],['Ѓ','ѓ','gj','MK'],['Ќ','ќ','kj','MK']]]
+];
+const cell=([U,l,t,tag,f])=>`<div class="gl${f?' faux':''}" data-ch="${l}"><b>${U}<i>${l}</i></b><span>${t}</span><em>${tag||''}</em></div>`;
+cheatBody.innerHTML = `<h3 id="weakH" style="display:none">Tes lettres faibles</h3><div class="weak" id="weakBox"></div>`
+ + `<div class="cheatnote">Encadré bleu = lettre du panneau en cours · bord rouge = faux ami · badge = pays (vide = russe) · % = ton taux d'erreur</div>`
+ + FAM.map(([t,d,ls])=>`<h3>${t}</h3>${d?`<div class="famdesc">${d}</div>`:''}<div class="grid">${ls.map(cell).join('')}</div>`).join('')
+ + `<div class="cheatnote">En italique (certaines enseignes) : <i>т</i> ≈ m, <i>и</i> ≈ u, <i>п</i> ≈ n, <i>д</i> ≈ g.</div>`;
+function markSign(){
+  const inS=new Set(city?city.n.toLowerCase():'');
+  cheatBody.querySelectorAll('.gl').forEach(g=>{ const k=g.dataset.ch; g.classList.toggle('insign',inS.has(k));
+    const v=LS[k]; if(v&&v[0]>=3&&v[1]>0) g.dataset.err=Math.round(100*v[1]/v[0])+'%'; else delete g.dataset.err; });
+  const wk=weakLetters();
+  weakH.style.display=wk.length?'':'none';
+  weakBox.innerHTML = wk.map(k=>`<span class="w"><b>${k.toUpperCase()} ${k}</b>${LS[k][1]}/${LS[k][0]}</span>`).join('')
+    + (wk.length?' <button class="btn" id="weakReset" style="padding:2px 8px;font-size:12px">Remettre à zéro</button>':'');
+  const rb=document.getElementById('weakReset');
+  if(rb) rb.onclick=()=>{ if(!confirm('Effacer les stats par lettre ?')) return; for(const k in LS) delete LS[k]; saveLS(); markSign(); };
+}
+cheatBtn.onclick=()=>{ markSign(); cheat.classList.toggle('on'); }; cheatClose.onclick=()=>cheat.classList.remove('on');
 
 window.addEventListener('resize',()=>{ if(phase!=='done') fitFilter(); else updateMarkers(); });
 nextCity();
