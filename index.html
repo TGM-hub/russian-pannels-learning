@@ -29,7 +29,7 @@ header h1{font-size:17px;margin:0 8px 0 0;font-weight:650}
 @media (prefers-color-scheme:dark){.btn.primary{color:#10202a}}
 .btn:disabled{opacity:.45;cursor:default}
 main{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
-@media (max-width:860px){main{grid-template-columns:1fr} svg#map{height:65vh;min-height:320px}}
+@media (max-width:860px){main{grid-template-columns:minmax(0,1fr);padding:10px} main>*{min-width:0} svg#map{height:65vh;min-height:320px}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .sign{background:#fff;border:6px solid #111;outline:3px solid #fff;box-shadow:0 0 0 4px #111,0 6px 18px #0003;border-radius:6px;
   color:#111;text-align:center;padding:18px 10px;margin:10px 6px 20px;font:700 clamp(26px,6vw,40px)/1.15 "Arial Narrow",Arial,sans-serif;letter-spacing:.5px;word-break:break-word}
@@ -88,10 +88,12 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-
 .sign-lesson .dec{color:#1d7a4c;border-bottom:3px solid #1d7a4c;font-weight:700}
 .sign-lesson .nar{color:#a06a12;border-bottom:1px dashed #a06a12;font-weight:600}
 #opts button.on{background:#1d7a4c;color:#fff;border-color:#1d7a4c}
+.tgm-nav{display:inline-flex;gap:4px;align-items:center;margin-right:6px;flex:none}.tgm-nav a{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:7px;border:1px solid currentColor;opacity:.5;color:inherit;text-decoration:none;font-size:14px;line-height:1}.tgm-nav a:hover,.tgm-nav a:focus-visible{opacity:1}
 </style>
 </head>
 <body>
 <header>
+<span class="tgm-nav"><a href="https://tgm-hub.github.io/Atlas/" title="Atlas">⌂</a><a href="https://tgm-hub.github.io/Atlas/daily.html" target="gg-daily" title="Révision du jour">⏱</a></span>
   <h1>Cyrillic Reader</h1>
   <div class="chips" id="opts">
     <button data-o="gg" title="Retire les pays sans couverture Street View officielle">Couverture GeoGuessr</button>
