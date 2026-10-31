@@ -101,6 +101,17 @@ aside h3{font-size:13px;margin:16px 0 6px;color:var(--muted);text-transform:uppe
 kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 .foot{font-size:12px;color:var(--muted);margin-top:14px}
 .sign-lesson{font-size:26px;letter-spacing:.02em;margin:6px 0 4px}
+/* explore mode (2026-10-31): browse a country's cities, no scoring */
+#expBox{display:none}
+body.exploring #expBox{display:block}
+body.exploring main .card>.row,body.exploring #verdict,body.exploring #letters,body.exploring #result,body.exploring .foot,body.exploring #locked,body.exploring #filter,body.exploring .stats{display:none!important}
+#expBox select{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);max-width:100%}
+#expInfo{margin:4px 0 12px}
+#expInfo .lat{font-size:22px;font-weight:650}
+.explist{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;max-height:46vh;overflow-y:auto}
+.explist button{font:inherit;font-size:15px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+.explist button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+#gMark circle.exp{cursor:pointer}
 .sign-lesson .dec{color:#1d7a4c;border-bottom:3px solid #1d7a4c;font-weight:700}
 .sign-lesson .nar{color:#a06a12;border-bottom:1px dashed #a06a12;font-weight:600}
 #opts button.on{background:#1d7a4c;color:#fff;border-color:#1d7a4c}
@@ -119,6 +130,7 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-
   <div class="chips" id="mode">
     <button data-m="city" class="on" title="City names">Cities</button>
     <button data-m="reg" title="Russia's regions (oblasts, krais, republics): read the name, then click the region">RU regions</button>
+    <button data-m="explore" title="Browse a country's cities: Cyrillic, reading, region, audio">Explore</button>
   </div>
   <div class="chips" id="filter">
     <button data-f="RUS" class="on">Russia</button>
@@ -137,8 +149,13 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-bottom-
 
 <main>
   <section class="card">
-    <div class="step">1 · Read the sign</div>
+    <div class="step" id="signStep">1 · Read the sign</div>
     <div class="sign" id="sign">…</div>
+    <div id="expBox">
+      <div id="expInfo"></div>
+      <label class="hint">Country <select id="expC"></select></label>
+      <div class="explist" id="expList"></div>
+    </div>
     <div class="row">
       <input type="text" id="guess" placeholder="Type the name in Latin letters…" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button class="btn primary" id="submit">Check</button>
@@ -542,9 +559,68 @@ const filterEl=document.getElementById('filter');
 filterEl.onclick=e=>{ const f=e.target.dataset.f; if(!f) return; filter=f; queue=[]; OWN=letterOwners();
   filterEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.f===f)); nextCity(); };
 const modeEl=document.getElementById('mode');
-modeEl.onclick=e=>{ const m=e.target.dataset.m; if(!m||m===mode) return; mode=m; queue=[];
+modeEl.onclick=e=>{ const m=e.target.dataset.m; if(!m||m===mode) return;
+  if(m==='explore') return enterExplore();
+  if(mode==='explore') leaveExplore();
+  mode=m; queue=[];
   modeEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
   filterEl.style.display = m==='reg' ? 'none' : ''; nextCity(); };
+
+// ---------- Explore: a country's cities, read and placed, nothing scored ----------
+const ISO3 = {RU:'RUS',UA:'UKR',BY:'BLR',BG:'BGR',RS:'SRB',BA:'BIH',ME:'MNE',MK:'MKD',KZ:'KAZ',KG:'KGZ',MN:'MNG'};
+const expC=document.getElementById('expC'), expList=document.getElementById('expList'), expInfo=document.getElementById('expInfo');
+const expCountries=Object.keys(DATA.countries).filter(k=>DATA.cities.some(c=>c.c===k));
+expC.innerHTML=expCountries.map(k=>`<option value="${k}">${esc(DATA.countries[k])} (${DATA.cities.filter(c=>c.c===k).length})</option>`).join('');
+let expCo='RUS', expSel=null, preMode='city';
+function enterExplore(co){
+  if(mode!=='explore'){ preMode=mode; mode='explore'; }
+  modeEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.m==='explore'));
+  document.body.classList.add('exploring'); phase='explore'; svg.classList.remove('active'); locked.style.display='none';
+  signStep.textContent='Explore · tap a city';
+  mapStep.textContent='Cities of the country (tap a dot)';
+  expShow(co && expCountries.includes(co) ? co : expCo);
+}
+function leaveExplore(){
+  document.body.classList.remove('exploring'); signStep.textContent='1 · Read the sign'; OWN=letterOwners();
+  try{ if(/^#explore/i.test(location.hash)) history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+}
+function expShow(co){
+  expCo=co; expC.value=co; city=null;
+  const list=DATA.cities.filter(c=>c.c===co);
+  expList.innerHTML=list.map((c,i)=>`<button data-i="${i}" title="${esc(c.l)}">${esc(c.n)}</button>`).join('');
+  expList.querySelectorAll('button').forEach(b=>b.onclick=()=>expPick(list[+b.dataset.i], list));
+  // map: the country, every city as a dot labelled in Cyrillic
+  clearMarks();
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  DATA.regions.forEach(r=>{ if(r.c!==co) return; const b=regEls[r.id].getBBox();
+    x0=Math.min(x0,b.x);y0=Math.min(y0,b.y);x1=Math.max(x1,b.x+b.width);y1=Math.max(y1,b.y+b.height); });
+  if(x0<1e9) fitBox(x0,y0,x1,y1);
+  list.forEach((c,i)=>{
+    const d=el('circle',{cx:c.x,cy:c.y,fill:'#8c9aa6',stroke:'#1b1b1b',class:'exp','data-i':i},gMark);
+    d.addEventListener('click',ev=>{ if(moved) return; ev.stopPropagation(); expPick(c,list); });
+    markers.push({e:d,type:'dot',px:5});
+    const t=el('text',{x:c.x,y:c.y-10,fill:'#c9d6df','text-anchor':'middle','font-size':11,'paint-order':'stroke',stroke:'#0b1f2e','stroke-width':3},gMark);
+    t.textContent=c.n; markers.push({e:t,type:'txt',px:3});
+  });
+  updateMarkers();
+  expPick(list[0], list, true);
+}
+function expPick(c, list, quiet){
+  expSel=c; city=c;
+  { const f0=filter; filter='ALL'; OWN=letterOwners(); filter=f0; }   // decisive letters judged against every country
+  sign.textContent=c.n;
+  document.querySelectorAll('.reg.hit').forEach(e=>e.classList.remove('hit'));
+  if(regEls[c.r]) regEls[c.r].classList.add('hit');
+  gMark.querySelectorAll('circle.exp').forEach(d=>{ const on=list[+d.dataset.i]===c; d.setAttribute('fill',on?'#c0392b':'#8c9aa6'); if(on) gMark.appendChild(d); });
+  markers.forEach(m=>{ if(m.type==='dot') m.px = m.e.getAttribute('fill')==='#c0392b' ? 8 : 5; }); updateMarkers();
+  expList.querySelectorAll('button').forEach(b=>b.classList.toggle('on', list[+b.dataset.i]===c));
+  const R=regById[c.r];
+  expInfo.innerHTML=`<div class="lat">${esc(c.l)} ${c.a?'<button class="btn audio" id="expPlay" title="Listen">🔊</button>':''}</div>`
+    + `<div class="hint">${esc(DATA.countries[c.c])} — ${esc(R?R.ru:'?')} <span>(${esc(R?R.en:'')})</span></div>` + letterLesson();
+  const pb=document.getElementById('expPlay'); if(pb) pb.onclick=play;
+  if(!quiet) play();
+}
+expC.onchange=()=>expShow(expC.value);
 
 // ---------- Antisèche ----------
 /* Grouped by what the letter LOOKS like, since on a sign you search by shape,
@@ -590,11 +666,14 @@ const settingsEl=document.getElementById('settings'), setBtn=document.getElement
 function setOpen(on){ settingsEl.classList.toggle('on',on); setBtn.setAttribute('aria-expanded',on); if(on) cheat.classList.remove('on'); }
 setBtn.onclick=()=>setOpen(!settingsEl.classList.contains('on')); document.getElementById('setClose').onclick=()=>setOpen(false);
 
-window.addEventListener('resize',()=>{ if(phase!=='done') fitFilter(); else updateMarkers(); });
-/* direct links (from the Atlas): #ru = Russia, #other or the code of another Cyrillic country (#ua, #bg, #rs…) = other
+window.addEventListener('resize',()=>{ if(phase!=='done'&&phase!=='explore') fitFilter(); else updateMarkers(); });
+/* direct links (from the Atlas): #explore/ua = explore a country's cities ; #ru = Russia, #other or the code of another Cyrillic country (#ua, #bg, #rs…) = other
    countries, #all = everything, #regions = Russian regions */
 function fromHash(){
   const h=decodeURIComponent(location.hash.slice(1)).trim().toLowerCase(); if(!h) return false;
+  /* #explore or #explore/ua (from the Atlas country pages): browse that country's cities */
+  if(h==='explore'||h.startsWith('explore/')){ const k=h.split('/')[1]; enterExplore(k ? (ISO3[k.toUpperCase()]||k.toUpperCase()) : null); return true; }
+  if(mode==='explore'){ leaveExplore(); mode='city'; modeEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.m==='city')); }
   const reg = h==='regions'||h==='reg';
   const f = h==='ru'||h==='rus' ? 'RUS' : h==='all' ? 'ALL' : h==='other'||/^[a-z]{2}$/.test(h) ? 'OTHER' : null;
   if(!reg && !f) return false;
